@@ -1,0 +1,113 @@
+URL:-  https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+
+cat cluster.yml
+
+--> A ClusterIP service is the default Kubernetes service. 
+--> It gives you a service inside your cluster that other apps inside your cluster can access. 
+--> There is no external access.
+
+apiVersion: v1
+kind: Service
+metadata:  
+  name: my-internal-service
+spec:
+  selector:    
+    app: my-app
+  type: ClusterIP
+  ports:  
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+
+##################################################################
+
+--> A NodePort service is the most primitive way to get external traffic directly to your service. 
+--> NodePort, as the name implies, opens a specific port on all the Nodes (the VMs), and any traffic that is sent to this port is forwarded to the service.
+--> Not recomended since it lead to opening of port for public.
+
+
+apiVersion: v1
+kind: Service
+metadata:  
+  name: my-nodeport-service
+spec:
+  selector:    
+    app: my-app
+  type: NodePort
+  ports:  
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30036
+    protocol: TCP
+  
+
+---
+There are many downsides to this method:
+You can only have one service per port
+You can only use ports 30000–32767
+If your Node/VM IP address change, you need to deal with that
+For these reasons, I don’t recommend using this method in production to directly expose your service. 
+If you are running a service that doesn’t have to be always available, or you are very cost sensitive, this method will work for you. 
+A good example of such an application is a demo app or something temporary.
+
+
+######################################################################################   
+Loadbalncer:
+--> A LoadBalancer service is the standard way to expose a service to the internet.
+--> Give you a single IP address that will forward all traffic to your service.
+--> There is no filtering, no routing, etc. This means you can send almost any kind of traffic to it, like HTTP, TCP, UDP, Websockets, gRPC, or whatever.
+--> The big downside is that each service you expose with a LoadBalancer will get its own IP address,
+and you have to pay for a LoadBalancer per exposed service, which can get expensive!
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9376
+  clusterIP: 10.0.171.239
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 192.0.2.127
+
+##########################################################################################
+
+Ingress:
+
+--> Ingress is actually NOT a type of service. Instead, it sits in front of multiple services and act as a “smart router” or entrypoint into your cluster.
+--> This will let you do both path based and subdomain based routing to backend services.
+--> For example, you can send everything on foo.yourdomain.com to the foo service,
+and everything under the yourdomain.com/bar/ path to the bar service.
+
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: my-ingress
+spec:
+  backend:
+    serviceName: other
+    servicePort: 8080
+  rules:
+  - host: foo.mydomain.com
+    http:
+      paths:
+      - backend:
+          serviceName: foo
+          servicePort: 8080
+  - host: mydomain.com
+    http:
+      paths:
+      - path: /bar/*
+        backend:
+          serviceName: bar
+          servicePort: 8080
